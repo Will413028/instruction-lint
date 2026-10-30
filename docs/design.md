@@ -22,7 +22,7 @@ locally and in CI does.
 - Not a Markdown style linter; it knows instruction-file semantics (tiers, budgets), not prose style.
 - Untracked local instruction files (`*.local.md`) are out of scope; CI cannot see them.
 - Not published to a package index. Distribution is a git repository (pre-commit hook, composite
-  action, `uvx --from git+...`) and, later, a pinned vendored copy for restricted environments.
+  action, `uvx --from git+...`) and, later, a pinned vendored copy for restricted environments (see Vendored copy).
 
 ## Model
 
@@ -94,6 +94,25 @@ contract; changing them is a major version change.
 - Date-injection test: the same `--today` gives byte-identical output.
 - CI matrix: Python 3.11 to 3.13 on Linux and macOS; the repository checks its own instruction
   files through the composite action.
+
+## Vendored copy
+
+For environments that cannot install from git, `instruction-lint vendor --to <dir>` writes one
+self-contained directory: the runner package with the default preset, an entry script
+(`instruction-lint.py`), `verify.py` and a `README.md` that records the upstream tag, the upstream
+commit and a SHA-256 for every file. Options: `--ref-tag` / `--ref-commit` (default: the exact tag
+and HEAD of the source checkout, else `untagged`), `--force` (replace a non-empty target).
+
+- Run it from the repository root: `python3 <dir>/instruction-lint.py` (Python >= 3.11, standard
+  library only, no network). Its output and exit codes equal `python3 -m instruction_lint`.
+- The output is reproducible: same source and same two upstream values give a byte-identical tree
+  (sorted order, fixed newlines, no timestamps, no machine paths or user names).
+- `python3 <dir>/verify.py` recomputes the hashes and fails (exit 1, naming the file) on a
+  modified, missing or unlisted file.
+
+Known limitation: verification only detects accidental modification. A deliberate change can edit
+the files and the manifest together, so it is not tamper-proof. The real gate is review of the
+diff of the pull request that upgrades the vendored copy.
 
 ## Versioning
 

@@ -1,0 +1,69 @@
+"""Check that this directory still matches the manifest in README.md.
+
+Detects accidental modification only: a deliberate change can edit the files and the manifest
+together. The real gate is review of the diff that upgrades this copy.
+
+Exit 0: every listed file matches and nothing else is present. Exit 1: mismatch, missing or
+extra file (named on stderr). Exit 2: the manifest cannot be read.
+"""
+import hashlib
+import os
+import sys
+
+BEGIN = "<!-- manifest:begin -->"
+END = "<!-- manifest:end -->"
+README = "README.md"
+
+
+def _manifest(root):
+    try:
+        with open(os.path.join(root, README), encoding="utf-8", newline="") as fh:
+            lines = fh.read().split("\n")
+    except OSError as exc:
+        sys.stderr.write(f"verify: cannot read {README}: {exc}\n")
+        raise SystemExit(2)
+    if BEGIN not in lines or END not in lines:
+        sys.stderr.write(f"verify: {README} has no manifest block\n")
+        raise SystemExit(2)
+    entries = {}
+    for line in lines[lines.index(BEGIN) + 1:lines.index(END)]:
+        if not line or line.startswith("```"):
+            continue
+        digest, sep, name = line.partition("  ")
+        if not sep or len(digest) != 64:
+            sys.stderr.write(f"verify: malformed manifest line: {line}\n")
+            raise SystemExit(2)
+        entries[name] = digest
+    return entries
+
+
+def main():
+    root = os.path.dirname(os.path.abspath(__file__))
+    entries = _manifest(root)
+    bad = []
+    for name, digest in sorted(entries.items()):
+        path = os.path.join(root, *name.split("/"))
+        try:
+            with open(path, "rb") as fh:
+                actual = hashlib.sha256(fh.read()).hexdigest()
+        except OSError:
+            bad.append(f"{name}: missing")
+            continue
+        if actual != digest:
+            bad.append(f"{name}: modified")
+    present = set()
+    for base, dirs, files in os.walk(root):
+        dirs[:] = [d for d in dirs if d != "__pycache__"]
+        for f in files:
+            present.add(os.path.relpath(os.path.join(base, f), root).replace(os.sep, "/"))
+    for name in sorted(present - set(entries) - {README}):
+        bad.append(f"{name}: not listed in the manifest")
+    if bad:
+        for line in bad:
+            sys.stderr.write(f"verify: {line}\n")
+        return 1
+    print(f"verify: ok ({len(entries)} files)")
+    return 0
+
+
+sys.exit(main())

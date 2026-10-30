@@ -1,0 +1,136 @@
+import getpass
+import os
+import re
+import shutil
+import subprocess
+import sys
+import tempfile
+import unittest
+from pathlib import Path
+
+import helpers
+
+ENTRY = "instruction-lint.py"
+
+
+def vendor(dest, *extra):
+    env = dict(os.environ, PYTHONPATH=str(helpers.REPO))
+    return subprocess.run(
+        [sys.executable, "-m", "instruction_lint", "vendor", "--to", str(dest),
+         "--ref-tag", "v9.9.9", "--ref-commit", "a" * 40, *extra],
+        capture_output=True, text=True, env=env,
+    )
+
+
+def tree(root):
+    return {p.relative_to(root).as_posix(): p.read_bytes() for p in sorted(Path(root).rglob("*")) if p.is_file()}
+
+
+def verify(dest):
+    return subprocess.run([sys.executable, "-I", str(Path(dest) / "verify.py")], capture_output=True, text=True)
+
+
+class VendorTest(unittest.TestCase):
+    def setUp(self):
+        self.tmp = Path(tempfile.mkdtemp(prefix="il-vendor-"))
+        self.addCleanup(shutil.rmtree, self.tmp, True)
+        self.a = self.tmp / "a"
+        self.assertEqual(vendor(self.a).returncode, 0)
+
+    def test_two_runs_are_byte_identical(self):
+        b = self.tmp / "b"
+        self.assertEqual(vendor(b).returncode, 0)
+        self.assertEqual(tree(self.a), tree(b))
+
+    def test_layout_and_no_machine_details(self):
+        files = tree(self.a)
+        self.assertIn(ENTRY, files)
+        self.assertIn("verify.py", files)
+        self.assertIn("instruction_lint/presets/default.toml", files)
+        self.assertFalse([n for n in files if "__pycache__" in n or n.endswith(".pyc")])
+        self.assertNotIn("instruction_lint/vendor.py", files)
+        readme = files["README.md"].decode()
+        self.assertIn("`v9.9.9`", readme)
+        self.assertIn("a" * 40, readme)
+        self.assertIn("accidental modification", readme)
+        blob = b"\n".join(files.values())
+        needles = [str(self.tmp), str(helpers.REPO), tempfile.gettempdir()]
+        for who in {getpass.getuser(), os.environ.get("USER", "")} - {""}:
+            if len(who) > 3:
+                needles.append(who)
+        for needle in needles:
+            self.assertNotIn(needle.encode(), blob, needle)
+        self.assertIsNone(re.search(rb"\b20\d\d-\d\d-\d\d[T ]\d\d:\d\d", blob))
+
+    def test_verify_passes(self):
+        r = verify(self.a)
+        self.assertEqual((r.returncode, r.stderr), (0, ""))
+
+    def test_verify_fails_on_modified_file(self):
+        for name in ("instruction_lint/cli.py", "instruction_lint/presets/default.toml", ENTRY, "verify.py"):
+            d = self.tmp / ("m-" + name.replace("/", "_"))
+            shutil.copytree(self.a, d)
+            with open(d / name, "ab") as fh:
+                fh.write(b"\n# x\n")
+            r = verify(d)
+            self.assertEqual(r.returncode, 1, name)
+            self.assertIn(name, r.stderr)
+
+    def test_verify_fails_on_extra_file(self):
+        (self.a / "instruction_lint" / "extra.py").write_text("x = 1\n")
+        r = verify(self.a)
+        self.assertEqual(r.returncode, 1)
+        self.assertIn("instruction_lint/extra.py", r.stderr)
+
+    def test_verify_ignores_pycache(self):
+        cache = self.a / "instruction_lint" / "__pycache__"
+        cache.mkdir()
+        (cache / "x.pyc").write_bytes(b"\0")
+        self.assertEqual(verify(self.a).returncode, 0)
+
+    def test_verify_fails_on_deleted_file(self):
+        (self.a / "instruction_lint" / "engine.py").unlink()
+        r = verify(self.a)
+        self.assertEqual(r.returncode, 1)
+        self.assertIn("instruction_lint/engine.py", r.stderr)
+
+    def test_refuses_non_empty_target_without_force(self):
+        r = vendor(self.a)
+        self.assertEqual(r.returncode, 2)
+        self.assertIn("--force", r.stderr)
+
+    def test_force_replaces_contents(self):
+        (self.a / "stale.txt").write_text("old")
+        self.assertEqual(vendor(self.a, "--force").returncode, 0)
+        self.assertFalse((self.a / "stale.txt").exists())
+        self.assertEqual(verify(self.a).returncode, 0)
+
+    def test_refuses_the_source_checkout(self):
+        r = vendor(helpers.REPO, "--force")
+        self.assertEqual(r.returncode, 2)
+
+    def test_vendored_copy_matches_module_run_offline(self):
+        cases = [
+            {"AGENTS.md": "ok\n"},
+            {"AGENTS.md": "z" * 13000 + "\n", "sub/AGENTS.md": "y" * 600 + "\n"},
+            {"AGENTS.md": "ok\n", ".instruction-lint.toml": "bogus = 1\n"},
+        ]
+        for files in cases:
+            root = helpers.make_repo(files)
+            self.addCleanup(shutil.rmtree, root, True)
+            ref = helpers.run_new(root, "--today", "2026-01-01")
+            got = subprocess.run(
+                [sys.executable, "-I", str(self.a / ENTRY), "--today", "2026-01-01"],
+                cwd=root, capture_output=True, text=True, env={"PATH": os.environ.get("PATH", "")},
+            )
+            self.assertEqual((got.returncode, got.stdout, got.stderr), (ref.returncode, ref.stdout, ref.stderr))
+        self.assertEqual(verify(self.a).returncode, 0)  # running it left the tree intact (no bytecode written)
+
+    def test_version_flag(self):
+        r = helpers.run_new(self.tmp, "--version")
+        self.assertEqual(r.returncode, 0)
+        self.assertRegex(r.stdout, r"instruction-lint \d+\.\d+\.\d+")
+
+
+if __name__ == "__main__":
+    unittest.main()

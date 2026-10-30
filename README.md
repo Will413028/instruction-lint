@@ -80,6 +80,25 @@ GitHub Actions (pin to a full commit SHA):
 Development: `make check` runs the unit tests (needs Python 3.11+, override with `PYTHON=...`).
 Design notes are in `docs/design.md`, decisions in `docs/adr/`.
 
+## Vendored copy
+
+For environments that cannot install from git, `instruction-lint vendor --to <dir>` writes one
+self-contained directory: the runner package with the default preset, an entry script
+(`instruction-lint.py`), `verify.py` and a `README.md` that records the upstream tag, the upstream
+commit and a SHA-256 for every file. Options: `--ref-tag` / `--ref-commit` (default: the exact tag
+and HEAD of the source checkout, else `untagged`), `--force` (replace a non-empty target).
+
+- Run it from the repository root: `python3 <dir>/instruction-lint.py` (Python >= 3.11, standard
+  library only, no network). Its output and exit codes equal `python3 -m instruction_lint`.
+- The output is reproducible: same source and same two upstream values give a byte-identical tree
+  (sorted order, fixed newlines, no timestamps, no machine paths or user names).
+- `python3 <dir>/verify.py` recomputes the hashes and fails (exit 1, naming the file) on a
+  modified, missing or unlisted file.
+
+Known limitation: verification only detects accidental modification. A deliberate change can edit
+the files and the manifest together, so it is not tamper-proof. The real gate is review of the
+diff of the pull request that upgrades the vendored copy.
+
 ## License
 
 MIT, see `LICENSE`.

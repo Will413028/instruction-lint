@@ -4,7 +4,7 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "instruction-lint"
-version = "0.0.0"
+version = "0.1.0"
 description = "A linter for agent instruction files (AGENTS.md / CLAUDE.md), configured by TOML."
 readme = "README.md"
 license = { text = "MIT" }
@@ -18,4 +18,4 @@ instruction-lint = "instruction_lint.cli:main"
 include = ["instruction_lint*"]
 
 [tool.setuptools.package-data]
-instruction_lint = ["presets/*.toml"]
+instruction_lint = ["presets/*.toml", "_vendor/*.txt"]

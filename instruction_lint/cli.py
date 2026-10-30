@@ -17,6 +17,7 @@ import datetime
 import os
 from pathlib import Path
 
+from . import __version__
 from . import config as config_mod
 from . import discover, engine
 from .errors import ConfigError
@@ -28,6 +29,7 @@ def _parser() -> argparse.ArgumentParser:
     p.add_argument("files", nargs="*", help="only decides whether to run; the full tracked set is always analyzed")
     p.add_argument("--config", help=f"config file (default: {config_mod.CONFIG_NAME} at the repo root, if present)")
     p.add_argument("--today", help="YYYY-MM-DD, replaces the current date (reproducible runs)")
+    p.add_argument("--version", action="version", version=f"instruction-lint {__version__}")
     p.add_argument("--list-rules", action="store_true", help="print the rules and their effective levels, then exit")
     p.add_argument("--warn-as-error", action="store_true", help="treat warnings as errors")
     return p
@@ -46,6 +48,14 @@ def _relevant(files: list[str], root: Path, cwd: Path, globs: list[str]) -> bool
 
 
 def main(argv: list[str] | None = None) -> int:
+    argv = sys.argv[1:] if argv is None else argv
+    if argv and argv[0] == "vendor":  # subcommand; any other first word keeps the check CLI
+        try:
+            from . import vendor
+        except ImportError:
+            sys.stderr.write("instruction-lint: vendor is only available from a source checkout\n")
+            return 2
+        return vendor.main(argv[1:])
     args = _parser().parse_args(argv)
     try:
         today = datetime.date.fromisoformat(args.today) if args.today else datetime.date.today()

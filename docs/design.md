@@ -57,6 +57,46 @@ them pass locally and fail in CI. Hooks therefore use `pass_filenames: false`.
   `measured > limit` (equal passes); line numbers count on the body after block removal.
   These match the checker this rule replaces; a contract test compares both on boundary fixtures.
 
+## Rules R2 to R6 and C1
+
+All of them enter the default preset at `warn` (see Versioning); the severity named below is what a
+repository gets with `level = "error"`. Each rule reads its parameters from the config, and the
+preset documents every key. Cross-file rules (`check_repo`) always see the full tracked set.
+Fenced code blocks and HTML comments are ignored by every text rule.
+
+- R2 shape: per glob (first match wins), `sections` must be the file's headings of `heading_level`,
+  `exact` (no others, in order) or `ordered` (extras allowed). Optional `title` (starts with a level-1
+  heading), `purpose` (a one-line paragraph after it), `bullets_only` (sections that hold only list
+  items) and `must_match` (regexes that must match the file). Empty `shapes` means inactive.
+- R3a test names: a backticked token that fully matches a `test_defs[].name` regex must be defined in a
+  tracked file matching `files`, found with the `definition` template (`{name}` is the placeholder).
+  A language with no matching tracked file is skipped. Presets: Go `func TestX(`, Python `def test_x(`.
+- R3b path references (heuristic, `warn` by design): a backticked path-like token is tried against the
+  file's directory and every ancestor, the repo root, the `base_dirs` (entries may contain `*`), each
+  also under `source_roots` and with `resolve_extensions`. Existence means a tracked file or the
+  directory of one. Skipped: spaces and `<>*{}$=|()[]?`, URLs, `@`/`~`/`-`/`/` prefixes, matches of
+  `ignore_patterns`, lines with an `ignore_negated_words` word, and bare file names unless
+  `check_bare_names`. Measured against real repositories this heuristic had a false-positive rate
+  of several percent and found no broken reference, which is why it stays at `warn`.
+- R3c spec references: `specs` maps instruction files to a spec document (`{1}` is what the glob's first
+  `*` matched); each `ref_pattern` match must match a numbered heading (`heading_pattern`; a heading
+  2.1 also makes section 2 valid). Skipped: references qualified by an ASCII word other than
+  `plain_words` (`other-doc §3`) and text matched by `ignore_before`. Empty `specs` means inactive.
+- R4 rot: dates (ISO) and issue references at the rule level; `narrative_words` at `narrative_level`.
+  A match inside a token that has a path separator, a file extension or a date-prefixed slug is a name,
+  not a date.
+- R5 duplicates: lines of at least `min_chars` characters, compared after collapsing whitespace and
+  removing a list marker; headings and table rules are skipped. Same line in a file and in a file of an
+  ancestor directory (or the same directory) is reported on the descendant at the rule level; between
+  siblings at `sibling_level`. Exact matches only. Always the full set (D13 of the plan: a partial view
+  would pass locally and fail in CI).
+- R6 constants: candidate patterns for values copied from code; findings are always warnings.
+- C1 CLAUDE.md: any tracked file named `CLAUDE.md`, whatever `discover.globs` says. `import-only`:
+  exactly one non-blank line, `import_line`, and an AGENTS.md next to it. `forbid`: must not exist.
+
+A finding carries its own level and the rule level caps it: a rule at `warn` never produces an error,
+and a rule at `error` can still report some findings (R4 narrative words, R5 siblings, R6) as warnings.
+
 ## Allowlist
 
 Each entry: `rule`, `path`, `reason`, `expires`.
@@ -81,6 +121,23 @@ warnings to stdout. Exit `0`: no errors; `1`: at least one error; `2`: usage or 
 problem. `--warn-as-error` promotes warnings. The format and exit codes are part of the
 contract; changing them is a major version change.
 
+## Subcommands
+
+- `instruction-lint check-pins`: every reference to this tool (pre-commit `rev:`, `uvx --from git+...@<sha>`,
+  `uses: owner/instruction-lint@<sha>`) must be a full 40-hex SHA and all must be equal; output
+  `file:line: check-pins: message`, exit 1. Line scanning, no YAML parser; limits are listed in
+  `docs/versioning.md` and the module docstring.
+- `instruction-lint config --format json`: the effective merged configuration (preset, extends,
+  repo config, defaults filled in) as JSON with sorted keys, so another program (a test in a language
+  without a TOML parser) can read the same values the linter uses. Exit 2 on an invalid config.
+- `instruction-lint vendor`: see Vendored copy.
+
+## Judgment checks
+
+What a program cannot decide (contradictions, stale claims, ambiguity, whether a line earns its place)
+is not in the linter and not in CI: `rubric.md` lists the criteria for a human or an agent reviewer,
+and `docs/pr-template-snippet.md` is the pull request prompt that asks for the result.
+
 ## Verification strategy
 
 - Unit tests per component (config, discovery, allowlist, CLI).
@@ -90,6 +147,12 @@ contract; changing them is a major version change.
   `(path, line, kind, measured, limit)` sets and compared together with exit codes. A mismatch
   means one of the two tools is wrong; the normalisation is not adjusted to hide it.
 - A temporary second leg runs both tools on a pinned public checkout and expects exit 0 from both.
+- Rule tests: every rule has passing and violating fixtures in `tests/test_rules.py`, checked by
+  mutation (neutralizing the rule must fail its tests); `tests/test_check_pins.py` covers `check-pins`
+  and the JSON config; `tests/test_versioning.py` fails when a rule above `warn` is not listed as
+  graduated in the changelog.
+- The temporary checkout leg also runs every rule at its specified level on the pinned checkout,
+  writes the report, and pins the set of error-level hits that were judged by hand.
 - Timing test: a full scan of 46 synthetic files finishes in under a second.
 - Date-injection test: the same `--today` gives byte-identical output.
 - CI matrix: Python 3.11 to 3.13 on Linux and macOS; the repository checks its own instruction
@@ -117,5 +180,6 @@ diff of the pull request that upgrades the vendored copy.
 ## Versioning
 
 Semantic versions as git tags. New rules enter as `warn`; promoting a rule to `error` is a minor
-change with a changelog entry; renaming or removing a rule id is a major change. Consumers pin
-a full commit SHA with the version in a comment.
+change with a changelog entry under `Graduated`; renaming or removing a rule id is a major change.
+Consumers pin a full commit SHA with the version in a comment. The process (changelog rules, release,
+how consumers upgrade) is in `docs/versioning.md`.

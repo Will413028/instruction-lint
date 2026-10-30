@@ -4,11 +4,19 @@ A linter for agent instruction files (`AGENTS.md`, `CLAUDE.md`). Rules and limit
 TOML file; the runner is a thin Python program that uses only the standard library
 (Python 3.11 or newer). A local git hook and CI call the same program with the same config.
 
-Status: walking skeleton (version 0.0.0). One rule exists so far.
+Status: version 0.2.0. Every rule except `R1` ships at `warn`; raise a rule to `error` in your own config once it is clean.
 
 | Rule | Level (default) | What it checks |
 |---|---|---|
 | `R1` | error | byte limit per path-depth tier (root, depth 1, deeper) and a character limit per line; optional marker blocks (for example text a tool injects) are not counted |
+| `R2` | warn | file shape: required section headings in order, optional title, one-line purpose, bullet-only sections |
+| `R3a` | warn | a test name in backticks is defined in a tracked test file |
+| `R3b` | warn | a path in backticks exists (resolved from the file, its ancestors, the root and configured bases; heuristic) |
+| `R3c` | warn | a `§N` reference matches a numbered heading in the mapped spec document |
+| `R4` | warn | dates and issue numbers (rule level), narrative words such as "currently" (`narrative_level`) |
+| `R5` | warn | identical lines in an ancestor and a descendant file (rule level) or in sibling files (`sibling_level`) |
+| `R6` | warn | candidates for constants copied from code (always a warning) |
+| `C1` | warn | `CLAUDE.md` is only the line `@AGENTS.md` (`import-only`) or absent (`forbid`) |
 | `allowlist` | error | time-boxed exceptions: expired or no-longer-needed entries fail, entries warn before they expire |
 
 ## Usage
@@ -19,6 +27,14 @@ instruction-lint --list-rules          # rules and their effective levels
 instruction-lint --today 2026-01-31    # replace the current date (reproducible runs)
 instruction-lint --config path.toml    # explicit config instead of .instruction-lint.toml
 instruction-lint --warn-as-error
+```
+
+Other commands:
+
+```sh
+instruction-lint check-pins            # every reference to this tool pins the same full commit SHA
+instruction-lint config --format json  # the effective merged configuration, sorted keys
+instruction-lint vendor --to DIR       # a pinned, self-contained copy (see below)
 ```
 
 Output is one line per finding: `file:line: rule-id: message`. Findings about a whole file use
@@ -76,6 +92,11 @@ GitHub Actions (pin to a full commit SHA):
 - uses: actions/checkout@<sha>
 - uses: Will413028/instruction-lint@<sha>
 ```
+
+Rules above `R1` need configuration to be useful (section lists, base directories, spec mappings);
+the preset documents every key. A rule at `error` can still emit some findings as warnings.
+The review criteria for what no program can decide are in `rubric.md`, with a pull request snippet in
+`docs/pr-template-snippet.md`; the release and upgrade process is in `docs/versioning.md`.
 
 Development: `make check` runs the unit tests (needs Python 3.11+, override with `PYTHON=...`).
 Design notes are in `docs/design.md`, decisions in `docs/adr/`.

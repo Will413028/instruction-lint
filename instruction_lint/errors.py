@@ -1,7 +1,10 @@
 """Shared error type and small schema helpers for configuration validation."""
 from __future__ import annotations
 
+import re
 from typing import Any, Iterable
+
+LEVELS = ("error", "warn", "off")
 
 
 class ConfigError(Exception):
@@ -37,3 +40,47 @@ def expect_str_list(value: Any, where: str) -> list[str]:
     if not isinstance(value, list) or not value:
         raise ConfigError(f"{where}: expected a non-empty list of strings")
     return [expect_str(v, f"{where}[{i}]") for i, v in enumerate(value)]
+
+
+def expect_bool(value: Any, where: str) -> bool:
+    if not isinstance(value, bool):
+        raise ConfigError(f"{where}: expected true or false")
+    return value
+
+
+def expect_level(value: Any, where: str) -> str:
+    if value not in LEVELS:
+        raise ConfigError(f"{where}: expected one of {', '.join(LEVELS)}")
+    return value
+
+
+def expect_str_items(value: Any, where: str) -> list[str]:
+    """A list of non-empty strings; an empty list is allowed."""
+    if not isinstance(value, list):
+        raise ConfigError(f"{where}: expected a list of strings")
+    return [expect_str(v, f"{where}[{i}]") for i, v in enumerate(value)]
+
+
+def expect_regex(value: Any, where: str) -> str:
+    text = expect_str(value, where)
+    try:
+        re.compile(text)
+    except re.error as exc:
+        raise ConfigError(f"{where}: invalid regular expression: {exc}") from exc
+    return text
+
+
+def expect_regex_list(value: Any, where: str) -> list[str]:
+    return [expect_regex(v, f"{where}[{i}]") for i, v in enumerate(expect_str_items(value, where))]
+
+
+def expect_table_list(value: Any, where: str) -> list[dict[str, Any]]:
+    if not isinstance(value, list) or not all(isinstance(v, dict) for v in value):
+        raise ConfigError(f"{where}: expected an array of tables")
+    return value
+
+
+def require_keys(table: dict[str, Any], keys: Iterable[str], where: str) -> None:
+    for key in keys:
+        if key not in table:
+            raise ConfigError(f"{where}: missing key {key}")

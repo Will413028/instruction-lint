@@ -7,20 +7,26 @@ from __future__ import annotations
 
 import datetime
 import tomllib
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from importlib import resources
 from pathlib import Path
 from typing import Any
 
 from . import allowlist
-from .errors import ConfigError, check_keys, expect_int, expect_str_list
+from .errors import LEVELS, ConfigError, check_keys, expect_int, expect_str, expect_str_list
 from .rules import RULES
 
 CONFIG_NAME = ".instruction-lint.toml"
 PRESET_PREFIX = "preset:"
 DEFAULT_PRESET = "preset:default"
-LEVELS = ("error", "warn", "off")
-_TOP_KEYS = {"extends", "discover", "allowlist", "rules"}
+_TOP_KEYS = {"extends", "discover", "allowlist", "rules", "check_pins"}
+PIN_DEFAULTS = {
+    "repo": "instruction-lint",
+    "files": [
+        ".pre-commit-config.yaml", ".pre-commit-config.yml", "lefthook.yml", "lefthook.yaml",
+        ".lefthook.yml", ".lefthook.yaml", ".github/workflows/*.yml", ".github/workflows/*.yaml",
+    ],
+}
 
 
 @dataclass
@@ -29,6 +35,25 @@ class Config:
     allowlist: allowlist.Settings
     entries: list[allowlist.Entry]
     rules: dict[str, dict[str, Any]]  # rule id -> validated params, including "level"
+    check_pins: dict[str, Any] = field(default_factory=lambda: dict(PIN_DEFAULTS))  # repo, files
+
+
+def to_jsonable(cfg: "Config") -> dict[str, Any]:
+    """The effective configuration as plain JSON data (dates as ISO strings)."""
+    return {
+        "discover": {"globs": cfg.globs},
+        "allowlist": {
+            "max_days": cfg.allowlist.max_days,
+            "max_entries": cfg.allowlist.max_entries,
+            "warn_days": cfg.allowlist.warn_days,
+            "entries": [
+                {"rule": e.rule, "path": e.path, "reason": e.reason, "expires": e.expires.isoformat()}
+                for e in cfg.entries
+            ],
+        },
+        "rules": cfg.rules,
+        "check_pins": cfg.check_pins,
+    }
 
 
 def _merge(base: dict[str, Any], over: dict[str, Any]) -> dict[str, Any]:
@@ -118,4 +143,10 @@ def _validate(raw: dict[str, Any], today: datetime.date) -> Config:
         rules[rule_id] = module.validate(params)
 
     entries = allowlist.parse(al.get("entries", []), settings, set(RULES), today)
-    return Config(globs=globs, allowlist=settings, entries=entries, rules=rules)
+    pins = raw.get("check_pins", {})
+    check_keys(pins, set(PIN_DEFAULTS), "check_pins")
+    pins = {
+        "repo": expect_str(pins.get("repo", PIN_DEFAULTS["repo"]), "check_pins.repo"),
+        "files": expect_str_list(pins.get("files", PIN_DEFAULTS["files"]), "check_pins.files"),
+    }
+    return Config(globs=globs, allowlist=settings, entries=entries, rules=rules, check_pins=pins)

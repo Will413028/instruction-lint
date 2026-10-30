@@ -14,6 +14,7 @@ if sys.version_info < (3, 11):  # checked before importing anything that needs t
 
 import argparse
 import datetime
+import json
 import os
 from pathlib import Path
 
@@ -47,6 +48,35 @@ def _relevant(files: list[str], root: Path, cwd: Path, globs: list[str]) -> bool
     return False
 
 
+def _config_main(argv: list[str]) -> int:
+    """`instruction-lint config --format json`: the effective (merged, validated) configuration."""
+    p = argparse.ArgumentParser(prog="instruction-lint config", description="Print the effective configuration.")
+    p.add_argument("--format", choices=["json"], default="json", help="output format (only json)")
+    p.add_argument("--config", help=f"config file (default: {config_mod.CONFIG_NAME} at the repo root, if present)")
+    p.add_argument("--today", help="YYYY-MM-DD, used to validate allowlist expiry dates")
+    args = p.parse_args(argv)
+    try:
+        today = datetime.date.fromisoformat(args.today) if args.today else datetime.date.today()
+    except ValueError:
+        sys.stderr.write("instruction-lint: --today must be YYYY-MM-DD\n")
+        return 2
+    try:
+        cfg_path = Path(args.config) if args.config else None
+        if cfg_path is None:
+            try:
+                root = discover.repo_root(Path.cwd())
+            except discover.DiscoverError:
+                root = None
+            if root is not None and (root / config_mod.CONFIG_NAME).is_file():
+                cfg_path = root / config_mod.CONFIG_NAME
+        cfg = config_mod.load(cfg_path, today)
+    except ConfigError as exc:
+        sys.stderr.write(f"instruction-lint: {exc}\n")
+        return 2
+    sys.stdout.write(json.dumps(config_mod.to_jsonable(cfg), sort_keys=True, indent=2, ensure_ascii=False) + "\n")
+    return 0
+
+
 def main(argv: list[str] | None = None) -> int:
     argv = sys.argv[1:] if argv is None else argv
     if argv and argv[0] == "vendor":  # subcommand; any other first word keeps the check CLI
@@ -56,6 +86,11 @@ def main(argv: list[str] | None = None) -> int:
             sys.stderr.write("instruction-lint: vendor is only available from a source checkout\n")
             return 2
         return vendor.main(argv[1:])
+    if argv and argv[0] == "check-pins":
+        from . import check_pins
+        return check_pins.main(argv[1:])
+    if argv and argv[0] == "config":
+        return _config_main(argv[1:])
     args = _parser().parse_args(argv)
     try:
         today = datetime.date.fromisoformat(args.today) if args.today else datetime.date.today()

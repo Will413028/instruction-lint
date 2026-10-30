@@ -18,3 +18,109 @@ excluded_blocks = []   # list of { begin = "...", end = "..." } marker pairs not
 root = 12000        # depth 0: AGENTS.md
 subproject = 8000   # depth 1: sub/AGENTS.md
 nested = 4000       # depth 2 and deeper
+
+# ---------------------------------------------------------------------------------------------
+# Rules added after R1 enter at `warn` (see CHANGELOG, "Graduated"). A repository raises a rule
+# with `level = "error"` in its own config once it is clean; sub-levels (narrative_level,
+# sibling_level) apply only up to the rule's own level.
+# ---------------------------------------------------------------------------------------------
+
+# R2 shape: section headings in order. `shapes` is empty here; a repository lists its own:
+#   [[rules.R2.shapes]]
+#   glob = "modules/*/AGENTS.md"      # first matching shape wins
+#   sections = ["Purpose", "Data", "Invariants"]
+#   mode = "exact"                    # exact: no other headings; ordered: extra headings allowed
+#   heading_level = 2
+#   title = true                      # first content is a level-1 title
+#   purpose = true                    # ...followed by a one-line purpose
+#   bullets_only = ["Invariants"]     # these sections hold only list items
+#   must_match = ["docs/spec/"]       # regexes that must match somewhere in the file
+[rules.R2]
+level = "warn"
+shapes = []
+
+# R3a test names: a backticked name must be defined in a tracked test file of that language.
+[rules.R3a]
+level = "warn"
+
+[[rules.R3a.test_defs]]
+name = 'Test[A-Z0-9_][A-Za-z0-9_]*'
+definition = 'func (?:\([^)]*\)\s*)?{name}\('
+files = ["**/*_test.go"]
+
+[[rules.R3a.test_defs]]
+name = 'test_[A-Za-z0-9_]+'
+definition = 'def {name}\('
+files = ["**/test_*.py", "**/*_test.py"]
+
+# R3b path references: heuristic, tried against the file's directory, its ancestors, the repo root
+# and `base_dirs` (entries may use `*`), also under `source_roots` and with `resolve_extensions`.
+[rules.R3b]
+level = "warn"
+base_dirs = []
+source_roots = []
+resolve_extensions = []
+file_extensions = ["md", "go", "py", "ts", "tsx", "js", "jsx", "json", "toml", "yaml", "yml", "sql", "sh", "dart", "proto", "css", "html", "txt"]
+ignore_patterns = [
+  '(^|/)node_modules(/|$)',
+  '(^|/)\.env(\.|$)',
+  '^\.git(/|$)',
+  '(^|/)\.(next|vercel|venv|cache)(/|$)',
+  '\.gitkeep$',
+]
+ignore_negated_words = []   # skip references on lines containing one of these words
+check_bare_names = false    # a name without a directory (`schema.sql`) is not checked
+
+# R3c spec references (`specs` maps instruction files to their spec; empty = rule inactive).
+#   [[rules.R3c.specs]]
+#   glob = "modules/*/AGENTS.md"
+#   spec = "docs/modules/{1}.md"      # {1} = what the first `*` matched
+[rules.R3c]
+level = "warn"
+specs = []
+ref_pattern = '§\s*(\d+(?:\.\d+)*)'
+heading_pattern = '^#{1,6}[ \t]+(?:§[ \t]*)?(\d+(?:\.\d+)*)(?![0-9])'
+ignore_qualified = true   # `other-doc §3` points elsewhere and is skipped...
+ignore_before = []        # skip a reference when the text before it on the line matches one of these regexes
+plain_words = ["see", "spec", "specification", "section", "sections", "in", "per", "and", "or", "to", "at", "of", "the", "also", "cf", "ref"]  # ...unless the word before is one of these
+
+# R4 rot: dates and issue numbers at the rule level, narrative words at narrative_level.
+[rules.R4]
+level = "warn"
+narrative_level = "warn"
+date_patterns = ['(?<![0-9])(?:19|20)\d{2}-(?:0[1-9]|1[0-2])-(?:0[1-9]|[12][0-9]|3[01])(?![0-9])']
+issue_patterns = [
+  '(?<![A-Za-z0-9_&#/])#\d+(?![A-Za-z0-9_])',
+  '(?i:(?<![A-Za-z])(?:issue|pull request|PR)\s+#?\d+)(?![0-9])',
+]
+# Names that carry a date are not dates: a path, a file name, a date-prefixed slug (`2026-01-02-title`).
+ignore_token_patterns = ['/', '\.(?:md|txt|sql|go|ts|tsx|js|py|toml|ya?ml|json)\b', '(?:19|20)[0-9]{2}-[0-9]{2}-[0-9]{2}-[A-Za-z]']
+narrative_words = [
+  "currently", "recently", "previously", "formerly", "no longer", "used to", "for now",
+  "at the moment", "temporarily", "newly",
+  "目前", "最近", "近期", "暫時", "以前", "原本", "已改為", "已移除",
+]
+
+# R5 duplicates: identical lines (>= min_chars) in an ancestor and a descendant file at the rule
+# level, in sibling files at sibling_level. Always compares the full tracked set.
+[rules.R5]
+level = "warn"
+sibling_level = "warn"
+min_chars = 40
+ignore_headings = true
+ignore_patterns = []
+
+# R6 copied constants: candidates only, always warnings.
+[rules.R6]
+level = "warn"
+candidate_patterns = [
+  '`[A-Za-z_][A-Za-z0-9_.]*\s*(?::=|=|:)\s*-?\d[0-9_.,]*[A-Za-z%]*`',
+  '\b[A-Z][A-Z0-9]*_[A-Z0-9_]+\b[ \t`=:]{1,6}[0-9]+',
+  '(?<![A-Za-z0-9])\d[0-9,_]*\s?(?:ms|seconds?|minutes?|hours?|days?|bytes|KB|MB|GB|秒|分鐘|小時|天|字元)(?![A-Za-z])',
+]
+
+# C1 CLAUDE.md: `import-only` (one line, the import) or `forbid` (no CLAUDE.md at all).
+[rules.C1]
+level = "warn"
+mode = "import-only"
+import_line = "@AGENTS.md"

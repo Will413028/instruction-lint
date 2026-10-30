@@ -12,8 +12,11 @@ class DiscoverError(Exception):
     pass
 
 
-def glob_to_regex(glob: str) -> re.Pattern[str]:
-    """`**/` matches zero or more directories, `*` and `?` never cross `/`."""
+def glob_to_regex(glob: str, capture: bool = False) -> re.Pattern[str]:
+    """`**/` matches zero or more directories, `*` and `?` never cross `/`.
+
+    With `capture`, each `*` run of a path segment becomes a group (used by `{1}` in templates).
+    """
     out: list[str] = []
     i = 0
     while i < len(glob):
@@ -24,7 +27,7 @@ def glob_to_regex(glob: str) -> re.Pattern[str]:
             out.append(".*")
             i += 2
         elif glob[i] == "*":
-            out.append("[^/]*")
+            out.append("([^/]*)" if capture else "[^/]*")
             i += 1
         elif glob[i] == "?":
             out.append("[^/]")

@@ -11,7 +11,8 @@ class SelfCheckTest(unittest.TestCase):
     def test_own_agents_md_passes_in_a_tracked_copy(self):
         # Non-vacuous even before the file is committed: analyze a tracked copy of it.
         text = (helpers.REPO / "AGENTS.md").read_text(encoding="utf-8")
-        root = helpers.make_repo({"AGENTS.md": text})
+        # R3b needs the other tracked files to resolve paths; this copy has none, so it is switched off.
+        root = helpers.make_repo({"AGENTS.md": text, ".instruction-lint.toml": "[rules.R3b]\nlevel = 'off'\n"})
         r = helpers.run_new(root, "--warn-as-error")
         self.assertEqual((r.returncode, r.stdout, r.stderr), (0, "", ""))
         # ...and the same copy fails when it is made too large (the check is really running).

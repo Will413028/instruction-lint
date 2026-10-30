@@ -1,0 +1,20 @@
+# Default preset shipped with instruction-lint. Repo configs extend it and override single keys.
+extends = []
+
+[discover]
+globs = ["AGENTS.md", "**/AGENTS.md", "CLAUDE.md", "**/CLAUDE.md"]
+
+[allowlist]
+max_days = 90     # reject `expires` later than today + max_days
+max_entries = 10  # more entries than this fails the configuration
+warn_days = 14    # warn when an entry expires within this many days
+
+[rules.R1]
+level = "error"
+max_line_chars = 500
+excluded_blocks = []   # list of { begin = "...", end = "..." } marker pairs not counted
+
+[rules.R1.max_bytes]
+root = 12000        # depth 0: AGENTS.md
+subproject = 8000   # depth 1: sub/AGENTS.md
+nested = 4000       # depth 2 and deeper

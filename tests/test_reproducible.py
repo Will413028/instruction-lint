@@ -1,0 +1,35 @@
+import unittest
+
+import helpers
+
+TOML = (
+    '[[allowlist.entries]]\nrule = "R1"\npath = "AGENTS.md"\nreason = "temporary"\nexpires = 2026-03-10\n'
+)
+
+
+class DateInjectionTest(unittest.TestCase):
+    def setUp(self):
+        self.root = helpers.make_repo({"AGENTS.md": "z" * 600 + "\n", ".instruction-lint.toml": TOML})
+
+    def run_at(self, day):
+        r = helpers.run_new(self.root, "--today", day)
+        return r.returncode, r.stdout, r.stderr
+
+    def test_same_date_same_output_repeatedly(self):
+        for day in ("2026-03-01", "2026-03-20"):
+            first = self.run_at(day)
+            for _ in range(3):
+                self.assertEqual(self.run_at(day), first)
+
+    def test_output_follows_the_injected_date(self):
+        self.assertEqual(self.run_at("2026-01-15")[0:2], (0, ""))               # 54 days: silent
+        code, out, _ = self.run_at("2026-03-01")                               # 9 days: warn
+        self.assertEqual(code, 0)
+        self.assertIn("expires in 9 days", out)
+        code, _, err = self.run_at("2026-03-11")                               # expired
+        self.assertEqual(code, 1)
+        self.assertIn("expired on 2026-03-10", err)
+
+
+if __name__ == "__main__":
+    unittest.main()

@@ -1,0 +1,121 @@
+"""Configuration: shipped preset + optional repo config with `extends`; unknown keys fail.
+
+Merge rule: tables merge key by key (the child wins); every other value, lists included,
+is replaced as a whole.
+"""
+from __future__ import annotations
+
+import datetime
+import tomllib
+from dataclasses import dataclass
+from importlib import resources
+from pathlib import Path
+from typing import Any
+
+from . import allowlist
+from .errors import ConfigError, check_keys, expect_int, expect_str_list
+from .rules import RULES
+
+CONFIG_NAME = ".instruction-lint.toml"
+PRESET_PREFIX = "preset:"
+DEFAULT_PRESET = "preset:default"
+LEVELS = ("error", "warn", "off")
+_TOP_KEYS = {"extends", "discover", "allowlist", "rules"}
+
+
+@dataclass
+class Config:
+    globs: list[str]
+    allowlist: allowlist.Settings
+    entries: list[allowlist.Entry]
+    rules: dict[str, dict[str, Any]]  # rule id -> validated params, including "level"
+
+
+def _merge(base: dict[str, Any], over: dict[str, Any]) -> dict[str, Any]:
+    out = dict(base)
+    for key, value in over.items():
+        if isinstance(value, dict) and isinstance(out.get(key), dict):
+            out[key] = _merge(out[key], value)
+        else:
+            out[key] = value
+    return out
+
+
+def _read(source: str, text: str) -> dict[str, Any]:
+    try:
+        return tomllib.loads(text)
+    except tomllib.TOMLDecodeError as exc:
+        raise ConfigError(f"{source}: invalid TOML: {exc}") from exc
+
+
+def _load_raw(ref: str, base_dir: Path | None, seen: tuple[str, ...]) -> dict[str, Any]:
+    if ref.startswith(PRESET_PREFIX):
+        name = ref[len(PRESET_PREFIX):]
+        key = ref
+        try:
+            text = (resources.files("instruction_lint") / "presets" / f"{name}.toml").read_text(encoding="utf-8")
+        except (FileNotFoundError, OSError) as exc:
+            raise ConfigError(f"unknown preset {name!r}") from exc
+        data = _read(ref, text)
+    else:
+        path = Path(ref)
+        if not path.is_absolute() and base_dir is not None:
+            path = base_dir / path
+        key = str(path.resolve())
+        try:
+            text = path.read_text(encoding="utf-8")
+        except OSError as exc:
+            raise ConfigError(f"cannot read config {path}: {exc.strerror}") from exc
+        data = _read(str(path), text)
+        base_dir = path.parent
+    if key in seen:
+        raise ConfigError(f"extends cycle at {ref}")
+    extends = data.get("extends", [DEFAULT_PRESET] if ref != DEFAULT_PRESET else [])
+    if isinstance(extends, str):
+        extends = [extends]
+    if not isinstance(extends, list) or not all(isinstance(e, str) for e in extends):
+        raise ConfigError(f"{ref}: extends must be a list of strings")
+    merged: dict[str, Any] = {}
+    for parent in extends:
+        merged = _merge(merged, _load_raw(parent, base_dir, seen + (key,)))
+    own = {k: v for k, v in data.items() if k != "extends"}
+    return _merge(merged, own)
+
+
+def load(config_path: Path | None, today: datetime.date) -> Config:
+    """Load the preset plus `config_path` (when given). Raises ConfigError on any problem."""
+    if config_path is None:
+        raw = _load_raw(DEFAULT_PRESET, None, ())
+    else:
+        raw = _load_raw(str(config_path), None, ())
+    return _validate(raw, today)
+
+
+def _validate(raw: dict[str, Any], today: datetime.date) -> Config:
+    check_keys(raw, _TOP_KEYS, "config")
+    discover = raw.get("discover", {})
+    check_keys(discover, {"globs"}, "discover")
+    globs = expect_str_list(discover.get("globs"), "discover.globs")
+
+    al = raw.get("allowlist", {})
+    check_keys(al, {"max_days", "max_entries", "warn_days", "entries"}, "allowlist")
+    settings = allowlist.Settings(
+        max_days=expect_int(al.get("max_days"), "allowlist.max_days", 0),
+        max_entries=expect_int(al.get("max_entries"), "allowlist.max_entries", 0),
+        warn_days=expect_int(al.get("warn_days"), "allowlist.warn_days", 0),
+    )
+
+    rules_raw = raw.get("rules", {})
+    check_keys(rules_raw, set(RULES), "rules")
+    rules: dict[str, dict[str, Any]] = {}
+    for rule_id, module in RULES.items():
+        params = rules_raw.get(rule_id)
+        if params is None:
+            raise ConfigError(f"rules.{rule_id}: missing")
+        level = params.get("level")
+        if level not in LEVELS:
+            raise ConfigError(f"rules.{rule_id}.level: expected one of {', '.join(LEVELS)}")
+        rules[rule_id] = module.validate(params)
+
+    entries = allowlist.parse(al.get("entries", []), settings, set(RULES), today)
+    return Config(globs=globs, allowlist=settings, entries=entries, rules=rules)

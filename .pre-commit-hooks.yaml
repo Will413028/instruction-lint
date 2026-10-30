@@ -1,0 +1,9 @@
+- id: instruction-lint
+  name: instruction-lint
+  description: Lint agent instruction files (AGENTS.md / CLAUDE.md).
+  entry: instruction-lint
+  language: python
+  # The tool always analyzes the full tracked set; `files` only decides whether to run.
+  pass_filenames: false
+  files: '(^|/)(AGENTS|CLAUDE)\.md$|^\.instruction-lint\.toml$'
+  minimum_pre_commit_version: '3.0.0'

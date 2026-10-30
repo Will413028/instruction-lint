@@ -1,0 +1,26 @@
+name: instruction-lint
+description: Lint agent instruction files (AGENTS.md / CLAUDE.md) in the checked-out repository.
+inputs:
+  config:
+    description: Path to a config file. Default is .instruction-lint.toml at the repo root, if present.
+    required: false
+    default: ''
+  python-version:
+    description: Python version to set up (3.11 or newer).
+    required: false
+    default: '3.12'
+runs:
+  using: composite
+  steps:
+    - uses: actions/setup-python@a26af69be951a213d495a4c3e4e4022e16d87065 # v5.6.0
+      with:
+        python-version: ${{ inputs.python-version }}
+    - name: Run instruction-lint
+      shell: bash
+      env:
+        IL_CONFIG: ${{ inputs.config }}
+        IL_ACTION_PATH: ${{ github.action_path }}
+      run: |
+        args=()
+        if [ -n "$IL_CONFIG" ]; then args+=(--config "$IL_CONFIG"); fi
+        PYTHONPATH="$IL_ACTION_PATH" python -m instruction_lint "${args[@]}"

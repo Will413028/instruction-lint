@@ -3,6 +3,13 @@
 All notable changes are listed here. Format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/);
 versions follow [Semantic Versioning](https://semver.org/).
 
+## [0.2.1] - 2026-10-31
+
+### Changed
+
+- The README written by `instruction-lint vendor` now has an "Upgrades" section that documents the upgrade
+  path (regenerate from a newer tag, open a pull request, review the diff), so a vendored copy needs no hand edits.
+
 ## [0.2.0] - 2026-10-31
 
 ### Added

@@ -53,6 +53,9 @@ class VendorTest(unittest.TestCase):
         self.assertIn("`v9.9.9`", readme)
         self.assertIn("a" * 40, readme)
         self.assertIn("accidental modification", readme)
+        self.assertIn("\n## Upgrades\n", readme)
+        self.assertIn("pull request diff is the review point", readme)
+        self.assertIn("keeps no\nupgrade script", readme)
         blob = b"\n".join(files.values())
         needles = [str(self.tmp), str(helpers.REPO), tempfile.gettempdir()]
         for who in {getpass.getuser(), os.environ.get("USER", "")} - {""}:

@@ -90,6 +90,12 @@ Check the copy itself with `python3 verify.py` (exit 0 when intact, 1 and the fi
 `verify.py` only detects accidental modification. A deliberate change can edit the files and the
 manifest above together, so it proves nothing about intent. The real gate is review of the diff
 of the pull request that upgrades this copy.
+
+## Upgrades
+
+A maintainer regenerates this directory from a newer upstream tag with the tool's `vendor` command
+and opens a pull request. The pull request diff is the review point. The repository keeps no
+upgrade script.
 """
     files["README.md"] = readme.encode("utf-8")
     return files

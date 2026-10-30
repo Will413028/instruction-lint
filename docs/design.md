@@ -146,7 +146,6 @@ and `docs/pr-template-snippet.md` is the pull request prompt that asks for the r
   character lines, multibyte text, marker blocks). Both outputs are normalised to
   `(path, line, kind, measured, limit)` sets and compared together with exit codes. A mismatch
   means one of the two tools is wrong; the normalisation is not adjusted to hide it.
-- A temporary second leg runs both tools on a pinned public checkout and expects exit 0 from both.
 - Rule tests: every rule has passing and violating fixtures in `tests/test_rules.py`, checked by
   mutation (neutralizing the rule must fail its tests); `tests/test_check_pins.py` covers `check-pins`
   and the JSON config; `tests/test_versioning.py` fails when a rule above `warn` is not listed as

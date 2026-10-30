@@ -41,18 +41,32 @@ effective config + git ls-files (full set) -> rules -> findings -> allowlist -> 
 
 Files are `git ls-files` entries matching `discover.globs` (default `AGENTS.md`, `**/AGENTS.md`,
 `CLAUDE.md`, `**/CLAUDE.md`), never a file ending in `.local.md`, skipping files deleted in the
-working tree. File names given on the command line only decide whether to run: cross-file rules
+working tree. File names given on the command line are not used to narrow the analysis: cross-file rules
 and the allowlist "no longer needed" check need the whole set, and a partial view would make
 them pass locally and fail in CI. Hooks therefore use `pass_filenames: false`.
 
+Trigger scope: R3a, R3b and R3c depend on test files, source and docs, not only on instruction files,
+so a hook or workflow must not filter by instruction-file paths. The pre-commit hook sets
+`always_run: true` and has no `files:`; lefthook and CI examples carry no path filters. Run on every
+commit and push; cross-file rules read the whole tracked set. Add a weekly `schedule` in CI so allowlist
+expiry warnings appear without commits.
+
 ## Rule R1: size
 
-- Byte limit by path depth of the file relative to the repo root: depth 0 (`root`), depth 1
-  (`subproject`), deeper (`nested`). Depth is the number of `/` in the path.
+- Limits come from `limits`, an ordered list of `{glob, max_bytes, max_lines}` entries (either or both
+  limits). The first entry whose glob matches the path applies; a file that matches no entry has no size
+  limit, so the default preset ends with entries that cover every discovered file. Globs use the matcher
+  of R2 shapes and R3c specs: `*` and `?` never cross `/`, `**/` matches zero or more directories.
+  Depth tiers are written as globs: `AGENTS.md`, `*/AGENTS.md`, `**/AGENTS.md`.
+- Default preset: `AGENTS.md` and `CLAUDE.md` at the root, 12000 bytes and 200 lines; `**/AGENTS.md` and
+  `**/CLAUDE.md`, 6000 bytes and 200 lines. The line limit follows Claude Code's official guidance of
+  fewer than 200 lines per CLAUDE.md file (https://code.claude.com/docs/en/memory).
+- The old `max_bytes` tier table is rejected with a message that points to the migration note in the
+  changelog.
 - Per-line limit in characters.
 - `excluded_blocks`: marker pairs; the text from a begin marker through the end marker (and one
   trailing newline) is removed before measuring.
-- Exact semantics: files are read as UTF-8 in text mode (CRLF becomes LF); bytes are counted on
+- Exact semantics: files are read as UTF-8 in text mode (CRLF becomes LF); bytes and lines are counted on
   the body after block removal; line length is in characters; a limit is exceeded when
   `measured > limit` (equal passes); line numbers count on the body after block removal.
   These match the checker this rule replaces; a contract test compares both on boundary fixtures.
@@ -88,7 +102,7 @@ Fenced code blocks and HTML comments are ignored by every text rule.
 - R5 duplicates: lines of at least `min_chars` characters, compared after collapsing whitespace and
   removing a list marker; headings and table rules are skipped. Same line in a file and in a file of an
   ancestor directory (or the same directory) is reported on the descendant at the rule level; between
-  siblings at `sibling_level`. Exact matches only. Always the full set (D13 of the plan: a partial view
+  siblings at `sibling_level`. Exact matches only. Always the full set (a partial view
   would pass locally and fail in CI).
 - R6 constants: candidate patterns for values copied from code; findings are always warnings.
 - C1 CLAUDE.md: any tracked file named `CLAUDE.md`, whatever `discover.globs` says. `import-only`:

@@ -1,31 +1,43 @@
-"""R1: size limits. A byte limit per path-depth tier and a character limit per line."""
+"""R1: size limits. Byte and line limits chosen by path glob (first match wins) and a character limit per line."""
 from __future__ import annotations
 
 import re
 from typing import Any
 
-from ..errors import ConfigError, check_keys, expect_int, expect_str
+from ..discover import glob_to_regex
+from ..errors import ConfigError, check_keys, expect_int, expect_str, expect_table_list, require_keys
 from ..finding import Finding
 
 ID = "R1"
 NAME = "size"
-DESCRIPTION = "byte limit per path-depth tier and character limit per line"
+DESCRIPTION = "byte and line limits per path glob and character limit per line"
 
-_TIERS = ("root", "subproject", "nested")
+_MIGRATION = (
+    "rules.R1.max_bytes (root/subproject/nested) was removed in 0.3.0; replace it with "
+    "[[rules.R1.limits]] entries, each with a glob and max_bytes and/or max_lines (first match wins). "
+    "See the 0.3.0 entry in CHANGELOG.md for a migration example"
+)
 
 
 def validate(params: dict[str, Any]) -> dict[str, Any]:
     where = f"rules.{ID}"
-    check_keys(params, {"level", "max_line_chars", "max_bytes", "excluded_blocks"}, where)
-    for key in ("max_line_chars", "max_bytes", "excluded_blocks"):
+    if "max_bytes" in params:
+        raise ConfigError(f"{where}: {_MIGRATION}")
+    check_keys(params, {"level", "max_line_chars", "limits", "excluded_blocks"}, where)
+    for key in ("max_line_chars", "limits", "excluded_blocks"):
         if key not in params:
             raise ConfigError(f"{where}: missing key {key}")
     expect_int(params["max_line_chars"], f"{where}.max_line_chars")
-    check_keys(params["max_bytes"], _TIERS, f"{where}.max_bytes")
-    for tier in _TIERS:
-        if tier not in params["max_bytes"]:
-            raise ConfigError(f"{where}.max_bytes: missing key {tier}")
-        expect_int(params["max_bytes"][tier], f"{where}.max_bytes.{tier}")
+    for i, raw in enumerate(expect_table_list(params["limits"], f"{where}.limits")):
+        at = f"{where}.limits[{i}]"
+        check_keys(raw, {"glob", "max_bytes", "max_lines"}, at)
+        require_keys(raw, ["glob"], at)
+        expect_str(raw["glob"], f"{at}.glob")
+        if "max_bytes" not in raw and "max_lines" not in raw:
+            raise ConfigError(f"{at}: needs max_bytes, max_lines or both")
+        for key in ("max_bytes", "max_lines"):
+            if key in raw:
+                expect_int(raw[key], f"{at}.{key}")
     blocks = params["excluded_blocks"]
     if not isinstance(blocks, list):
         raise ConfigError(f"{where}.excluded_blocks: expected a list of {{begin, end}} tables")
@@ -46,14 +58,12 @@ def _block_patterns(params: dict[str, Any]) -> list[re.Pattern[str]]:
     ]
 
 
-def limit_for(path: str, params: dict[str, Any]) -> int:
-    depth = path.count("/")
-    tiers = params["max_bytes"]
-    if depth == 0:
-        return tiers["root"]
-    if depth == 1:
-        return tiers["subproject"]
-    return tiers["nested"]
+def limit_for(path: str, params: dict[str, Any]) -> dict[str, Any]:
+    """The first `limits` entry whose glob matches; no match means no size limit."""
+    for entry in params["limits"]:
+        if glob_to_regex(entry["glob"]).match(path):
+            return entry
+    return {}
 
 
 def check(path: str, text: str, params: dict[str, Any]) -> list[Finding]:
@@ -63,8 +73,11 @@ def check(path: str, text: str, params: dict[str, Any]) -> list[Finding]:
     found: list[Finding] = []
     size = len(body.encode("utf-8"))  # bytes after block removal
     limit = limit_for(path, params)
-    if size > limit:
-        found.append(Finding(path, 0, ID, f"file is {size} bytes, limit {limit}"))
+    if "max_bytes" in limit and size > limit["max_bytes"]:
+        found.append(Finding(path, 0, ID, f"file is {size} bytes, limit {limit['max_bytes']}"))
+    lines = len(body.splitlines())
+    if "max_lines" in limit and lines > limit["max_lines"]:
+        found.append(Finding(path, 0, ID, f"file is {lines} lines, limit {limit['max_lines']}"))
     max_chars = params["max_line_chars"]
     # Line numbers count on the body after block removal; length is in characters.
     for number, line in enumerate(body.splitlines(), start=1):

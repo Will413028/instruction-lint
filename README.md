@@ -4,11 +4,11 @@ A linter for agent instruction files (`AGENTS.md`, `CLAUDE.md`). Rules and limit
 TOML file; the runner is a thin Python program that uses only the standard library
 (Python 3.11 or newer). A local git hook and CI call the same program with the same config.
 
-Status: version 0.2.0. Every rule except `R1` ships at `warn`; raise a rule to `error` in your own config once it is clean.
+Status: version 0.3.0. Every rule except `R1` ships at `warn`; raise a rule to `error` in your own config once it is clean.
 
 | Rule | Level (default) | What it checks |
 |---|---|---|
-| `R1` | error | byte limit per path-depth tier (root, depth 1, deeper) and a character limit per line; optional marker blocks (for example text a tool injects) are not counted |
+| `R1` | error | byte and line limits chosen by path glob (first match wins) and a character limit per line; optional marker blocks (for example text a tool injects) are not counted |
 | `R2` | warn | file shape: required section headings in order, optional title, one-line purpose, bullet-only sections |
 | `R3a` | warn | a test name in backticks is defined in a tracked test file |
 | `R3b` | warn | a path in backticks exists (resolved from the file, its ancestors, the root and configured bases; heuristic) |
@@ -41,8 +41,8 @@ Output is one line per finding: `file:line: rule-id: message`. Findings about a 
 line `0` (printed as `:0`). Errors go to stderr, warnings to stdout. Exit codes: `0` no errors,
 `1` at least one error, `2` usage or configuration problem.
 
-Files given on the command line only decide whether to run at all; the full tracked set is
-always analyzed (cross-file checks and allowlist checks need it). Untracked local instruction
+Files given on the command line are ignored; the full tracked set is always analyzed
+(cross-file checks and allowlist checks need it). Untracked local instruction
 files (`*.local.md`) are never analyzed.
 
 ## Configuration
@@ -60,10 +60,15 @@ level = "error"                     # error | warn | off
 max_line_chars = 500
 excluded_blocks = [{ begin = "<!-- BEGIN:x -->", end = "<!-- END:x -->" }]
 
-[rules.R1.max_bytes]
-root = 12000
-subproject = 10000
-nested = 6000
+# First matching glob wins; a file matching no entry has no size limit.
+[[rules.R1.limits]]
+glob = "AGENTS.md"
+max_bytes = 12000
+max_lines = 200                     # optional; either or both
+
+[[rules.R1.limits]]
+glob = "**/AGENTS.md"
+max_bytes = 6000
 
 [allowlist]
 max_days = 90
@@ -86,9 +91,30 @@ pre-commit:
     - id: instruction-lint
 ```
 
-GitHub Actions (pin to a full commit SHA):
+Run on every commit and push: rules R3a, R3b and R3c read test files, source and docs, and cross-file
+rules read the whole tracked set, so do not filter the hook, lefthook entry or workflow by instruction
+files (no `files:`, `glob:` or `paths:` filters). The pre-commit hook sets `always_run: true`.
+
+lefthook (no path filter):
 
 ```yaml
+pre-commit:
+  commands:
+    instruction-lint:
+      run: python3 -m instruction_lint
+```
+
+GitHub Actions (pin to a full commit SHA; no `paths:` filter, plus a weekly run so allowlist expiry
+warnings appear even when nobody commits):
+
+```yaml
+on:
+  push:
+  pull_request:
+  schedule:
+    - cron: "0 6 * * 1"   # weekly
+
+# steps:
 - uses: actions/checkout@<sha>
 - uses: Will413028/instruction-lint@<sha>
 ```

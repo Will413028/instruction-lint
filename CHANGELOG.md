@@ -3,6 +3,50 @@
 All notable changes are listed here. Format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/);
 versions follow [Semantic Versioning](https://semver.org/).
 
+## [0.3.0] - 2026-10-31
+
+While the version is below 1.0, a minor release may carry breaking changes; this one does (see
+"Changed (breaking)"). Read the entry before moving a pin.
+
+### Changed (breaking)
+
+- `R1` chooses its limits by path glob instead of depth tiers. `[rules.R1.max_bytes]` with `root`,
+  `subproject` and `nested` is removed; a config that still sets `max_bytes` under `rules.R1` fails with
+  exit code 2 and a message pointing here. Entries are `[[rules.R1.limits]]` tables, the first whose
+  `glob` matches the file applies, each with `max_bytes`, `max_lines` or both. A file that matches no
+  entry has no size limit. Globs use the same matcher as R2 shapes and R3c specs (`*` never crosses `/`,
+  `**/` matches zero or more directories). A repository config that sets `limits` replaces the preset list.
+
+  Migration (depth tiers 12000 / 10000 / 6000 become):
+
+  ```toml
+  [[rules.R1.limits]]
+  glob = "AGENTS.md"        # was root
+  max_bytes = 12000
+
+  [[rules.R1.limits]]
+  glob = "*/AGENTS.md"      # was subproject (depth 1)
+  max_bytes = 10000
+
+  [[rules.R1.limits]]
+  glob = "**/AGENTS.md"     # was nested (depth 2 and deeper)
+  max_bytes = 6000
+  ```
+
+  Repeat the entries for `CLAUDE.md` if you lint it.
+- Default limits: root `AGENTS.md` / `CLAUDE.md` 12000 bytes and 200 lines; `**/AGENTS.md` / `**/CLAUDE.md`
+  6000 bytes and 200 lines (was 8000 and 4000 bytes by depth). The 200-line limit follows Claude Code's
+  guidance of fewer than 200 lines per CLAUDE.md file.
+- The pre-commit hook now sets `always_run: true` and no longer filters by `files`: rules R3a, R3b and R3c
+  read test files, source and docs, so a hook that only ran when an instruction file changed missed their
+  breakage. The tool still analyzes the full tracked set.
+
+### Added
+
+- `R1` line limit: `file is N lines, limit L` (`max_lines` in a `limits` entry).
+- README and design notes: run on every commit and push, plus a weekly scheduled CI run so allowlist
+  expiry warnings appear without commits.
+
 ## [0.2.1] - 2026-10-31
 
 ### Changed

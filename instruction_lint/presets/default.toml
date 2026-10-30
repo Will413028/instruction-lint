@@ -14,10 +14,29 @@ level = "error"
 max_line_chars = 500
 excluded_blocks = []   # list of { begin = "...", end = "..." } marker pairs not counted
 
-[rules.R1.max_bytes]
-root = 12000        # depth 0: AGENTS.md
-subproject = 8000   # depth 1: sub/AGENTS.md
-nested = 4000       # depth 2 and deeper
+# Size limits by path glob: the first matching entry applies; a file that matches no entry has no size
+# limit. Either or both of max_bytes and max_lines may be set. The line limit follows Claude Code's
+# guidance of fewer than 200 lines per CLAUDE.md file (https://code.claude.com/docs/en/memory).
+# A repository config that sets `limits` replaces this whole list.
+[[rules.R1.limits]]
+glob = "AGENTS.md"
+max_bytes = 12000
+max_lines = 200
+
+[[rules.R1.limits]]
+glob = "CLAUDE.md"
+max_bytes = 12000
+max_lines = 200
+
+[[rules.R1.limits]]
+glob = "**/AGENTS.md"
+max_bytes = 6000
+max_lines = 200
+
+[[rules.R1.limits]]
+glob = "**/CLAUDE.md"
+max_bytes = 6000
+max_lines = 200
 
 # ---------------------------------------------------------------------------------------------
 # Rules added after R1 enter at `warn` (see CHANGELOG, "Graduated"). A repository raises a rule

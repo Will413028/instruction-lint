@@ -3,7 +3,8 @@
   description: Lint agent instruction files (AGENTS.md / CLAUDE.md).
   entry: instruction-lint
   language: python
-  # The tool always analyzes the full tracked set; `files` only decides whether to run.
+  # Cross-file rules (R3a/R3b/R3c) read test files, source and docs, so the hook must run on every
+  # commit and cannot be filtered by instruction files. The tool analyzes the full tracked set.
   pass_filenames: false
-  files: '(^|/)(AGENTS|CLAUDE)\.md$|^\.instruction-lint\.toml$'
+  always_run: true
   minimum_pre_commit_version: '3.0.0'

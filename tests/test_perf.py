@@ -8,9 +8,9 @@ LIMIT_SECONDS = 1.0
 
 class PerfTest(unittest.TestCase):
     def test_full_scan_of_46_files_under_one_second(self):
-        files = {"AGENTS.md": ("line of text\n" * 300)}
+        files = {"AGENTS.md": ("line of text\n" * 190)}
         for i in range(45):
-            files[f"mod{i // 5}/sub{i}/AGENTS.md"] = "line of text\n" * 200
+            files[f"mod{i // 5}/sub{i}/AGENTS.md"] = "line of text\n" * 150
         root = helpers.make_repo(files)
         self.assertEqual(len(files), 46)
         best = None

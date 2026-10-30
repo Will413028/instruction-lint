@@ -12,7 +12,15 @@ excluded_blocks = [
   { begin = "<!-- BEGIN:nextjs-agent-rules -->", end = "<!-- END:nextjs-agent-rules -->" },
 ]
 
-[rules.R1.max_bytes]
-root = 12000
-subproject = 10000
-nested = 6000
+# Depth tiers as globs: `*` never crosses `/`, so `*/AGENTS.md` is exactly depth 1; first match wins.
+[[rules.R1.limits]]
+glob = "AGENTS.md"        # depth 0
+max_bytes = 12000
+
+[[rules.R1.limits]]
+glob = "*/AGENTS.md"      # depth 1
+max_bytes = 10000
+
+[[rules.R1.limits]]
+glob = "**/AGENTS.md"     # depth 2 and deeper
+max_bytes = 6000

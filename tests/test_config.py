@@ -13,6 +13,9 @@ def run(toml, *extra):
     return helpers.run_new(root, "--today", "2026-06-01", *extra)
 
 
+LIMIT_100 = '[[rules.R1.limits]]\nglob = "AGENTS.md"\nmax_bytes = 100\n'
+
+
 class ConfigTest(unittest.TestCase):
     def test_no_config_uses_preset(self):
         root = helpers.make_repo({"AGENTS.md": "ok\n"})
@@ -50,7 +53,7 @@ class ConfigTest(unittest.TestCase):
         self.assertEqual(r.returncode, 2)
 
     def test_repo_override_changes_a_single_limit(self):
-        root = helpers.make_repo({"AGENTS.md": "x\n" * 60, ".instruction-lint.toml": "[rules.R1.max_bytes]\nroot = 100\n"})
+        root = helpers.make_repo({"AGENTS.md": "x\n" * 60, ".instruction-lint.toml": LIMIT_100})
         r = helpers.run_new(root)
         self.assertEqual(r.returncode, 1)
         self.assertIn("AGENTS.md:0: R1: file is 120 bytes, limit 100", r.stderr)
@@ -68,7 +71,7 @@ class ConfigTest(unittest.TestCase):
     def test_extends_relative_file_and_cycle(self):
         root = helpers.make_repo({
             "AGENTS.md": "x\n" * 60,
-            "base.toml": "[rules.R1.max_bytes]\nroot = 100\n",
+            "base.toml": LIMIT_100,
             ".instruction-lint.toml": "extends = ['preset:default', 'base.toml']\n",
         })
         self.assertEqual(helpers.run_new(root).returncode, 1)

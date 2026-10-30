@@ -4,7 +4,8 @@
 
 Semantic versions as git tags (`v0.2.0`). The tag points at a commit; consumers pin the full
 40-hex commit SHA and note the version in a comment. Pre-1.0, a minor version may add rules and
-change defaults; always read the changelog before moving a pin.
+change defaults; it may also remove or rename a config key (listed under "Changed (breaking)" in the
+changelog). Always read the changelog before moving a pin.
 
 | Change | Version part |
 |---|---|
